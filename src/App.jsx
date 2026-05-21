@@ -1,118 +1,111 @@
 import { useState, useEffect } from 'react'
+import { supabase } from './supabase.js'
 import Header from './components/Header.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import MedForm from './components/MedForm.jsx'
 import LogModal from './components/LogModal.jsx'
 import HistoryView from './components/HistoryView.jsx'
 
-const STORAGE_KEY = 'cat-med-tracker-v1'
+const CAT_ID = 'harold'
 
-function loadData() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
-function saveData(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-}
-
-const defaultState = {
-  cat: { name: 'My Cat', age: '', weight: '', breed: '' },
-  medications: [],
-  logs: [],
-}
+const defaultCat = { name: 'Harold (meestor evil)', age: '', weight: '', breed: '' }
 
 export default function App() {
-  const [data, setData] = useState(() => loadData() || defaultState)
-  const [view, setView] = useState('dashboard') // dashboard | addMed | history
+  const [cat, setCat] = useState(defaultCat)
+  const [medications, setMedications] = useState([])
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [view, setView] = useState('dashboard')
   const [editingMed, setEditingMed] = useState(null)
   const [loggingMed, setLoggingMed] = useState(null)
 
+  // Load all data from Supabase on mount
   useEffect(() => {
-    saveData(data)
-  }, [data])
+    async function loadAll() {
+      setLoading(true)
+      const [catRes, medsRes, logsRes] = await Promise.all([
+        supabase.from('cat_profile').select('*').eq('id', CAT_ID).single(),
+        supabase.from('medications').select('*').order('created_at', { ascending: true }),
+        supabase.from('dose_logs').select('*').order('timestamp', { ascending: false }),
+      ])
+      if (catRes.data) setCat(catRes.data)
+      if (medsRes.data) setMedications(medsRes.data)
+      if (logsRes.data) setLogs(logsRes.data)
+      setLoading(false)
+    }
+    loadAll()
+  }, [])
 
-  function updateCat(cat) {
-    setData(d => ({ ...d, cat }))
+  async function updateCat(updated) {
+    setCat(updated)
+    await supabase.from('cat_profile').upsert({ ...updated, id: CAT_ID })
   }
 
-  function saveMed(med) {
+  async function saveMed(med) {
     if (editingMed) {
-      setData(d => ({
-        ...d,
-        medications: d.medications.map(m => m.id === med.id ? med : m),
-      }))
+      const { data } = await supabase
+        .from('medications')
+        .update(med)
+        .eq('id', med.id)
+        .select()
+        .single()
+      if (data) setMedications(ms => ms.map(m => m.id === data.id ? data : m))
       setEditingMed(null)
     } else {
-      setData(d => ({
-        ...d,
-        medications: [...d.medications, { ...med, id: crypto.randomUUID() }],
-      }))
+      const { id: _id, ...medWithoutId } = med
+      const { data } = await supabase
+        .from('medications')
+        .insert(medWithoutId)
+        .select()
+        .single()
+      if (data) setMedications(ms => [...ms, data])
     }
     setView('dashboard')
   }
 
-  function deleteMed(id) {
-    setData(d => ({
-      ...d,
-      medications: d.medications.filter(m => m.id !== id),
-      logs: d.logs.filter(l => l.medId !== id),
-    }))
+  async function deleteMed(id) {
+    await supabase.from('medications').delete().eq('id', id)
+    await supabase.from('dose_logs').delete().eq('med_id', id)
+    setMedications(ms => ms.filter(m => m.id !== id))
+    setLogs(ls => ls.filter(l => l.med_id !== id))
   }
 
-  function logDose(medId, note, timestamp) {
-    setData(d => ({
-      ...d,
-      logs: [...d.logs, {
-        id: crypto.randomUUID(),
-        medId,
-        timestamp: timestamp || new Date().toISOString(),
-        note: note || '',
-      }],
-    }))
+  async function logDose(medId, note, timestamp) {
+    const { data } = await supabase
+      .from('dose_logs')
+      .insert({ med_id: medId, timestamp: timestamp || new Date().toISOString(), note: note || '' })
+      .select()
+      .single()
+    if (data) setLogs(ls => [data, ...ls])
     setLoggingMed(null)
   }
 
-  function deleteLog(logId) {
-    setData(d => ({ ...d, logs: d.logs.filter(l => l.id !== logId) }))
+  async function deleteLog(logId) {
+    await supabase.from('dose_logs').delete().eq('id', logId)
+    setLogs(ls => ls.filter(l => l.id !== logId))
   }
 
-  function startEdit(med) {
-    setEditingMed(med)
-    setView('addMed')
-  }
+  function startEdit(med) { setEditingMed(med); setView('addMed') }
+  function startAdd() { setEditingMed(null); setView('addMed') }
+  function cancelForm() { setEditingMed(null); setView('dashboard') }
 
-  function startAdd() {
-    setEditingMed(null)
-    setView('addMed')
-  }
-
-  function cancelForm() {
-    setEditingMed(null)
-    setView('dashboard')
-  }
+  if (loading) return <LoadingScreen />
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--cream)' }}>
       <Header
-        catName={data.cat.name}
+        catName={cat.name}
         view={view}
         setView={setView}
         onAddMed={startAdd}
         cancelForm={cancelForm}
       />
-
       <main style={{ maxWidth: 760, margin: '0 auto', padding: '0 1.25rem 4rem' }}>
         {view === 'dashboard' && (
           <Dashboard
-            cat={data.cat}
-            medications={data.medications}
-            logs={data.logs}
+            cat={cat}
+            medications={medications}
+            logs={logs}
             onUpdateCat={updateCat}
             onAddMed={startAdd}
             onEditMed={startEdit}
@@ -121,32 +114,36 @@ export default function App() {
             onViewHistory={() => setView('history')}
           />
         )}
-
         {view === 'addMed' && (
-          <MedForm
-            initial={editingMed}
-            onSave={saveMed}
-            onCancel={cancelForm}
-          />
+          <MedForm initial={editingMed} onSave={saveMed} onCancel={cancelForm} />
         )}
-
         {view === 'history' && (
           <HistoryView
-            medications={data.medications}
-            logs={data.logs}
+            medications={medications}
+            logs={logs}
             onDeleteLog={deleteLog}
             onBack={() => setView('dashboard')}
           />
         )}
       </main>
-
       {loggingMed && (
-        <LogModal
-          med={loggingMed}
-          onLog={logDose}
-          onClose={() => setLoggingMed(null)}
-        />
+        <LogModal med={loggingMed} onLog={logDose} onClose={() => setLoggingMed(null)} />
       )}
+    </div>
+  )
+}
+
+function LoadingScreen() {
+  return (
+    <div style={{
+      minHeight: '100vh', background: 'var(--cream)',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 16,
+    }}>
+      <div style={{ fontSize: 48 }}>🐱</div>
+      <p style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: 'var(--ink-muted)' }}>
+        Loading Harold's data…
+      </p>
     </div>
   )
 }

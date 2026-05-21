@@ -22,7 +22,7 @@ export default function Dashboard({
   const dueSoon = medications.filter(med => {
     if (!med.frequency) return false
     const lastLog = logs
-      .filter(l => l.medId === med.id)
+      .filter(l => l.med_id === med.id)
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]
     if (!lastLog) return true
     const hoursSince = (Date.now() - new Date(lastLog.timestamp)) / 3600000
@@ -177,7 +177,7 @@ export default function Dashboard({
             <MedCard
               key={med.id}
               med={med}
-              logs={logs.filter(l => l.medId === med.id)}
+              logs={logs.filter(l => l.med_id === med.id)}
               onLog={() => onLogDose(med)}
               onEdit={() => onEditMed(med)}
               onDelete={() => onDeleteMed(med.id)}

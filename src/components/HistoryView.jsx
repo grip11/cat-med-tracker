@@ -53,7 +53,7 @@ export default function HistoryView({ medications, logs, onDeleteLog, onBack }) 
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {dayLogs.map(log => {
-                  const med = getMed(log.medId)
+                  const med = getMed(log.med_id)
                   return (
                     <div
                       key={log.id}
