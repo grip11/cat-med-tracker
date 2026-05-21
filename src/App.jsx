@@ -10,6 +10,27 @@ const CAT_ID = 'harold'
 
 const defaultCat = { name: 'Harold (meestor evil)', age: '', weight: '', breed: '' }
 
+function toSnakeCase(med) {
+  return {
+    name: med.name,
+    dosage: med.dosage || '',
+    frequency: med.frequency || '',
+    notes: med.notes || '',
+    prescribed_by: med.prescribedBy || med.prescribed_by || '',
+    start_date: med.startDate || med.start_date || '',
+    end_date: med.endDate || med.end_date || '',
+  }
+}
+
+function toCamelCase(med) {
+  return {
+    ...med,
+    prescribedBy: med.prescribed_by || '',
+    startDate: med.start_date || '',
+    endDate: med.end_date || '',
+  }
+}
+
 export default function App() {
   const [cat, setCat] = useState(defaultCat)
   const [medications, setMedications] = useState([])
@@ -19,7 +40,6 @@ export default function App() {
   const [editingMed, setEditingMed] = useState(null)
   const [loggingMed, setLoggingMed] = useState(null)
 
-  // Load all data from Supabase on mount
   useEffect(() => {
     async function loadAll() {
       setLoading(true)
@@ -29,7 +49,7 @@ export default function App() {
         supabase.from('dose_logs').select('*').order('timestamp', { ascending: false }),
       ])
       if (catRes.data) setCat(catRes.data)
-      if (medsRes.data) setMedications(medsRes.data)
+      if (medsRes.data) setMedications(medsRes.data.map(toCamelCase))
       if (logsRes.data) setLogs(logsRes.data)
       setLoading(false)
     }
@@ -43,22 +63,23 @@ export default function App() {
 
   async function saveMed(med) {
     if (editingMed) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('medications')
-        .update(med)
+        .update(toSnakeCase(med))
         .eq('id', med.id)
         .select()
         .single()
-      if (data) setMedications(ms => ms.map(m => m.id === data.id ? data : m))
+      if (error) { console.error(error); return }
+      if (data) setMedications(ms => ms.map(m => m.id === data.id ? toCamelCase(data) : m))
       setEditingMed(null)
     } else {
-      const { id: _id, ...medWithoutId } = med
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('medications')
-        .insert(medWithoutId)
+        .insert(toSnakeCase(med))
         .select()
         .single()
-      if (data) setMedications(ms => [...ms, data])
+      if (error) { console.error(error); return }
+      if (data) setMedications(ms => [...ms, toCamelCase(data)])
     }
     setView('dashboard')
   }
@@ -71,11 +92,12 @@ export default function App() {
   }
 
   async function logDose(medId, note, timestamp) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('dose_logs')
       .insert({ med_id: medId, timestamp: timestamp || new Date().toISOString(), note: note || '' })
       .select()
       .single()
+    if (error) { console.error(error); return }
     if (data) setLogs(ls => [data, ...ls])
     setLoggingMed(null)
   }
