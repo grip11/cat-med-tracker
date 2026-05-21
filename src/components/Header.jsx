@@ -1,4 +1,4 @@
-export default function Header({ catName, view, setView, onAddMed, cancelForm }) {
+export default function Header({ catName, view, setView, onAddMed, cancelForm, onRefresh, refreshing }) {
   return (
     <header style={{
       background: 'var(--ink)',
@@ -45,15 +45,18 @@ export default function Header({ catName, view, setView, onAddMed, cancelForm })
         <nav style={{ display: 'flex', gap: 6 }}>
           {view === 'dashboard' && (
             <>
-              <NavBtn onClick={() => setView('history')} active={view === 'history'}>
-                History
+              <NavBtn onClick={onRefresh} title="Refresh" spin={refreshing}>
+                {refreshing ? '⟳' : '↻'}
               </NavBtn>
-              <NavBtn onClick={onAddMed} primary>
-                + Add Med
-              </NavBtn>
+              <NavBtn onClick={() => setView('calendar')}>Calendar</NavBtn>
+              <NavBtn onClick={() => setView('history')}>History</NavBtn>
+              <NavBtn onClick={onAddMed} primary>+ Add Med</NavBtn>
             </>
           )}
           {view === 'history' && (
+            <NavBtn onClick={() => setView('dashboard')}>← Back</NavBtn>
+          )}
+          {view === 'calendar' && (
             <NavBtn onClick={() => setView('dashboard')}>← Back</NavBtn>
           )}
           {view === 'addMed' && (
@@ -65,14 +68,15 @@ export default function Header({ catName, view, setView, onAddMed, cancelForm })
   )
 }
 
-function NavBtn({ children, onClick, active, primary }) {
+function NavBtn({ children, onClick, active, primary, title, spin }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       style={{
         padding: '6px 14px',
         borderRadius: 'var(--radius-sm)',
-        fontSize: 13,
+        fontSize: spin ? 18 : 13,
         fontWeight: 500,
         fontFamily: 'var(--font-body)',
         background: primary ? 'var(--terracotta)' : active ? 'rgba(255,255,255,0.15)' : 'transparent',
@@ -81,9 +85,11 @@ function NavBtn({ children, onClick, active, primary }) {
         transition: 'all 0.15s ease',
         cursor: 'pointer',
         letterSpacing: '0.01em',
+        animation: spin ? 'spin 0.8s linear infinite' : 'none',
       }}
     >
       {children}
+      <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
     </button>
   )
 }

@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase.js'
 import Header from './components/Header.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import MedForm from './components/MedForm.jsx'
 import LogModal from './components/LogModal.jsx'
 import HistoryView from './components/HistoryView.jsx'
+import CalendarView from './components/CalendarView.jsx'
 
 const CAT_ID = 'harold'
-
 const defaultCat = { name: 'Harold (meestor evil)', age: '', weight: '', breed: '' }
 
 function toSnakeCase(med) {
@@ -36,25 +36,29 @@ export default function App() {
   const [medications, setMedications] = useState([])
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [view, setView] = useState('dashboard')
   const [editingMed, setEditingMed] = useState(null)
   const [loggingMed, setLoggingMed] = useState(null)
 
-  useEffect(() => {
-    async function loadAll() {
-      setLoading(true)
-      const [catRes, medsRes, logsRes] = await Promise.all([
-        supabase.from('cat_profile').select('*').eq('id', CAT_ID).single(),
-        supabase.from('medications').select('*').order('created_at', { ascending: true }),
-        supabase.from('dose_logs').select('*').order('timestamp', { ascending: false }),
-      ])
-      if (catRes.data) setCat(catRes.data)
-      if (medsRes.data) setMedications(medsRes.data.map(toCamelCase))
-      if (logsRes.data) setLogs(logsRes.data)
-      setLoading(false)
-    }
-    loadAll()
+  const loadAll = useCallback(async (quiet = false) => {
+    if (quiet) setRefreshing(true)
+    else setLoading(true)
+    const [catRes, medsRes, logsRes] = await Promise.all([
+      supabase.from('cat_profile').select('*').eq('id', CAT_ID).single(),
+      supabase.from('medications').select('*').order('created_at', { ascending: true }),
+      supabase.from('dose_logs').select('*').order('timestamp', { ascending: false }),
+    ])
+    if (catRes.data) setCat(catRes.data)
+    if (medsRes.data) setMedications(medsRes.data.map(toCamelCase))
+    if (logsRes.data) setLogs(logsRes.data)
+    if (quiet) setRefreshing(false)
+    else setLoading(false)
   }, [])
+
+  useEffect(() => { loadAll() }, [loadAll])
+
+  function handleRefresh() { loadAll(true) }
 
   async function updateCat(updated) {
     setCat(updated)
@@ -64,20 +68,13 @@ export default function App() {
   async function saveMed(med) {
     if (editingMed) {
       const { data, error } = await supabase
-        .from('medications')
-        .update(toSnakeCase(med))
-        .eq('id', med.id)
-        .select()
-        .single()
+        .from('medications').update(toSnakeCase(med)).eq('id', med.id).select().single()
       if (error) { console.error(error); return }
       if (data) setMedications(ms => ms.map(m => m.id === data.id ? toCamelCase(data) : m))
       setEditingMed(null)
     } else {
       const { data, error } = await supabase
-        .from('medications')
-        .insert(toSnakeCase(med))
-        .select()
-        .single()
+        .from('medications').insert(toSnakeCase(med)).select().single()
       if (error) { console.error(error); return }
       if (data) setMedications(ms => [...ms, toCamelCase(data)])
     }
@@ -95,8 +92,7 @@ export default function App() {
     const { data, error } = await supabase
       .from('dose_logs')
       .insert({ med_id: medId, timestamp: timestamp || new Date().toISOString(), note: note || '' })
-      .select()
-      .single()
+      .select().single()
     if (error) { console.error(error); return }
     if (data) setLogs(ls => [data, ...ls])
     setLoggingMed(null)
@@ -121,6 +117,8 @@ export default function App() {
         setView={setView}
         onAddMed={startAdd}
         cancelForm={cancelForm}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
       />
       <main style={{ maxWidth: 760, margin: '0 auto', padding: '0 1.25rem 4rem' }}>
         {view === 'dashboard' && (
@@ -145,6 +143,12 @@ export default function App() {
             logs={logs}
             onDeleteLog={deleteLog}
             onBack={() => setView('dashboard')}
+          />
+        )}
+        {view === 'calendar' && (
+          <CalendarView
+            medications={medications}
+            logs={logs}
           />
         )}
       </main>
